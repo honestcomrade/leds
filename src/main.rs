@@ -1,23 +1,50 @@
-trait LedActivator {
-    fn toggle(&self);
+trait LedOutput {
+    fn apply(&mut self, leds: &LedArray);
 }
 
-struct LedActivatorImpl;
+struct ConsoleLedOutput;
 
-impl LedActivator for LedActivatorImpl {
-    fn toggle(&self) {
-        
+impl LedOutput for ConsoleLedOutput {
+    fn apply(&mut self, leds: &LedArray) {
+        println!("{}", leds.describe());
+    }
+}
+
+struct AppliedLedRecord {
+    target: LedTarget,
+    color: LedColor,
+    active: bool,
+}
+
+struct FakeLedOutput {
+    last_snapshot: Vec<AppliedLedRecord>,
+}
+
+impl LedOutput for FakeLedOutput {
+    fn apply(&mut self, leds: &LedArray) {
+        let mut snapshot = Vec::new();
+
+        for i in 0..leds.leds.len() {
+            snapshot.push(AppliedLedRecord {
+                target: leds.leds[i].target,
+                color: leds.leds[i].color,
+                active: leds.leds[i].active,
+            });
+        }
+
+        self.last_snapshot = snapshot;
     }
 }
 
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum LedTarget  {
     Network,
     Disk0,
     Disk1,
 }
 
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum LedColor {
     Cool,
     Hot,
@@ -63,11 +90,12 @@ fn main() {
             LedState { target: LedTarget::Disk1,   color: LedColor::Hot,  active: false },
         ],
     };
+    let mut led_output = ConsoleLedOutput;
 
-    println!("{}",led_array.describe());
+    led_output.apply(&led_array);
     led_array.toggle_target(LedTarget::Network);
     println!("After toggling the Network LED:");
-    println!("{}",led_array.describe());
+    led_output.apply(&led_array);
 }
 
 impl LedState {
@@ -91,3 +119,46 @@ impl LedState {
     }
 }
 
+#[test]
+fn toggle_led() {
+    let mut led = LedState { target: LedTarget::Network, color: LedColor::Cool, active: false };
+    led.toggle();
+    assert_eq!(led.active, true);
+}
+
+#[test]
+fn toggle_target() {
+    let mut led_array = LedArray {
+        leds: [
+            LedState { target: LedTarget::Network, color: LedColor::Cool, active: false },
+            LedState { target: LedTarget::Disk0,   color: LedColor::Hot,  active: false },
+            LedState { target: LedTarget::Disk1,   color: LedColor::Hot,  active: false },
+        ],
+    };
+
+    assert!(!led_array.leds.iter().any(|led| led.target == LedTarget::Network && led.active));
+    led_array.toggle_target(LedTarget::Network);
+    assert!(led_array.leds.iter().any(|led| led.target == LedTarget::Network && led.active));
+    assert!(!led_array.leds.iter().any(|led| led.target == LedTarget::Disk0 && led.active));
+    assert!(!led_array.leds.iter().any(|led| led.target == LedTarget::Disk1 && led.active));
+}
+
+#[test]
+fn toggle_with_apply() {
+    let mut led_array = LedArray {
+        leds: [
+            LedState { target: LedTarget::Network, color: LedColor::Cool, active: false },
+            LedState { target: LedTarget::Disk0,   color: LedColor::Hot,  active: false },
+            LedState { target: LedTarget::Disk1,   color: LedColor::Hot,  active: false },
+        ],
+    };
+
+    let mut led_output = FakeLedOutput { last_snapshot: Vec::new() };
+    led_output.apply(&led_array);
+    assert_eq!(led_output.last_snapshot.len(), 3);
+    assert!(led_output.last_snapshot.iter().any(|led| led.target == LedTarget::Network && !led.active));
+
+    led_array.toggle_target(LedTarget::Network);
+    led_output.apply(&led_array);
+    assert!(led_output.last_snapshot.iter().any(|led| led.target == LedTarget::Network && led.active));
+}
