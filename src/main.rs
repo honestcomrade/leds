@@ -1,12 +1,13 @@
 trait LedOutput {
-    fn apply(&mut self, leds: &LedArray);
+    fn apply(&mut self, leds: &LedArray) -> Result<(), std::io::Error>;
 }
 
 struct ConsoleLedOutput;
 
 impl LedOutput for ConsoleLedOutput {
-    fn apply(&mut self, leds: &LedArray) {
+    fn apply(&mut self, leds: &LedArray) -> Result<(), std::io::Error> {
         println!("{}", leds.describe());
+        Ok(())
     }
 }
 
@@ -21,7 +22,7 @@ struct FakeLedOutput {
 }
 
 impl LedOutput for FakeLedOutput {
-    fn apply(&mut self, leds: &LedArray) {
+    fn apply(&mut self, leds: &LedArray) -> Result<(), std::io::Error> {
         let mut snapshot = Vec::new();
 
         for i in 0..leds.leds.len() {
@@ -33,6 +34,7 @@ impl LedOutput for FakeLedOutput {
         }
 
         self.last_snapshot = snapshot;
+        Ok(())
     }
 }
 
@@ -80,22 +82,42 @@ impl LedArray {
             }
         }
     }
+    fn new() -> Self {
+        LedArray {
+            leds: [
+                LedState { target: LedTarget::Network, color: LedColor::Cool, active: false },
+                LedState { target: LedTarget::Disk0,   color: LedColor::Hot,  active: false },
+                LedState { target: LedTarget::Disk1,   color: LedColor::Hot,  active: false },
+            ],
+        }
+    }
+}
+
+struct LedService {
+    leds: LedArray,
+    tick_interval: u64,
+}
+
+impl LedService { 
+    fn new() -> Self {
+        LedService {
+            leds: LedArray::new(),
+            tick_interval: 3,
+        }
+    }
+
+    fn start(self) {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(self.tick_interval));
+            println!("Tick...");
+            println!("{}", self.leds.describe());
+        }
+    }
 }
 
 fn main() {
-    let mut led_array = LedArray {
-        leds: [
-            LedState { target: LedTarget::Network, color: LedColor::Cool, active: false },
-            LedState { target: LedTarget::Disk0,   color: LedColor::Hot,  active: false },
-            LedState { target: LedTarget::Disk1,   color: LedColor::Hot,  active: false },
-        ],
-    };
-    let mut led_output = ConsoleLedOutput;
-
-    led_output.apply(&led_array);
-    led_array.toggle_target(LedTarget::Network);
-    println!("After toggling the Network LED:");
-    led_output.apply(&led_array);
+    let led_service = LedService::new();
+    led_service.start();
 }
 
 impl LedState {
